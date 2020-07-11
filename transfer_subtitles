@@ -1,0 +1,105 @@
+ #!/bin/bash
+
+[ $# -eq 5 ] || {
+	echo "Usage: $0 <subbed_file> <raw_file> <out_file> <init_shift_time> <shift_seconds>"
+	echo -e "\tTransfers subs (+attachments) from <subbed_file> to <raw_file>, while shifting all"
+	echo -e "\ttimestamps from <init_shift_time> (hh:mm:ss) onwards by <shift_seconds> seconds"
+	exit
+}
+
+in_subbed="$1"
+in_raw="$2"
+out="$3"
+init_shift_time="$4"
+shift_sec="$5"
+
+subfile="__temp_subs.ass"
+shifted_subfile="__temp_shifted.ass"
+final_subfile="__temp_final.ass"
+
+
+echo "initializing ..."
+
+########## make sure input files exist & outfiles do not ##########
+
+[ -f "$in_subbed" ] &&
+[ -f "$in_raw" ] &&
+! [ -f "$subfile" ] &&
+! [ -f "$shifted_subfile" ] &&
+! [ -f "$final_subfile" ] &&
+! [ -f "$out" ] || {
+	echo "Error: invalid in/out file or temporary files exist. Exiting .."
+	exit
+}
+
+
+########## verify format of <init_shift_time>, <shift_seconds> ##########
+
+echo "$shift_sec" | grep -qE '^-?[0-9]+$' &&
+echo "$init_shift_time" | grep -qE '^[1-9]?[0-9]:[0-5][0-9]:[0-5][0-9]$' || {
+	echo "Error: invalid timestamp or shift seconds. Exiting .."
+	exit
+}
+
+
+
+########## verify that input file is valid (exactly 1 subtitle track) ##########
+
+sub_id_regex='s/^.*Stream #0:([0-9]+).*: Subtitle: .*$/\1/p'
+
+sub_id=$(ffprobe -i "$in_subbed" 2>&1 | sed -nr "$sub_id_regex") &&
+[[ "$(echo "$sub_id" | wc -l)" -eq 1 ]] || {
+	echo "Error: input must have exactly 1 Subtitle track. Exiting .."
+	exit
+}
+
+
+
+echo "extracting subtitles ..."
+
+########## extract and shift subs ##########
+
+ffmpeg -i "$in_subbed" -map 0:$sub_id "$subfile" >& /dev/null
+ffmpeg -itsoffset $shift_sec -i "$subfile" "$shifted_subfile" >& /dev/null
+
+
+
+########## merge unshifted and shifted subs ##########
+
+noshift_until_line=0
+while read -r line; do
+	echo "$line" | grep -q '^Dialogue:' &&
+	timestamp="$(echo "$line" | grep -oE '[0-9]+:[0-5][0-9]:[0-5][0-9]')" &&
+	! [[ $(echo "$timestamp" | awk '{print $1}') < "$init_shift_time" ]] && break
+
+	((++noshift_until_line))
+done < "$subfile"
+
+head -n$noshift_until_line "$subfile" > "$final_subfile"
+tail -n$(($(wc -l "$subfile" | awk '{print $1}')-$noshift_until_line)) "$shifted_subfile" >> "$final_subfile"
+
+
+
+########## build ffmpeg option for copying all attachments ##########
+
+att_id_regex='s/^.*Stream #0:([0-9]+).*: Attachment: .*$/\1/p'
+att_map=""
+while read -r att_id; do
+	att_map="${att_map}-map 1:$att_id "
+done <<< "$(ffprobe -i "$in_subbed" 2>&1 | sed -nr "$att_id_regex")"
+
+
+
+
+
+echo "writing output '$out' ..."
+
+########## merge final subs (as default) & attachments to raw ##########
+
+ffmpeg -i "$in_raw" -i "$in_subbed" -i "$final_subfile" -map 0 $att_map -map 2 -c copy -disposition:s:0 default "$out"
+
+
+
+########## clean temporary files ##########
+
+rm "$subfile" "$shifted_subfile" "$final_subfile"
