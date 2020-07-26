@@ -1,9 +1,9 @@
- #!/bin/bash
+#!/bin/bash
 
 [ $# -eq 5 ] || {
-	echo "Usage: $0 <subbed_file> <raw_file> <out_file> <init_shift_time> <shift_seconds>"
+	echo "Usage: $0 <subbed_file> <raw_file> <out_file> <init_shift_time> <shift_time>"
 	echo -e "\tTransfers subs (+attachments) from <subbed_file> to <raw_file>, while shifting all"
-	echo -e "\ttimestamps from <init_shift_time> (hh:mm:ss) onwards by <shift_seconds> seconds"
+	echo -e "\ttimestamps from <init_shift_time> (hh:mm:ss) onwards by <shift_time> (timestamp [-]hh:mm:ss[.xxx])"
 	exit
 }
 
@@ -11,7 +11,7 @@ in_subbed="$1"
 in_raw="$2"
 out="$3"
 init_shift_time="$4"
-shift_sec="$5"
+shift_time="$5"
 
 subfile="__temp_subs.ass"
 shifted_subfile="__temp_shifted.ass"
@@ -33,11 +33,11 @@ echo "initializing ..."
 }
 
 
-########## verify format of <init_shift_time>, <shift_seconds> ##########
+########## verify format of <init_shift_time>, <shift_time> ##########
 
-echo "$shift_sec" | grep -qE '^-?[0-9]+$' &&
+echo "$shift_time" | grep -qE '^-?([0-9]{2}:){2}[0-9]{2}([.][0-9]{3})?$' &&
 echo "$init_shift_time" | grep -qE '^[1-9]?[0-9]:[0-5][0-9]:[0-5][0-9]$' || {
-	echo "Error: invalid timestamp or shift seconds. Exiting .."
+	echo "Error: invalid init or shift timestamp. Exiting .."
 	exit
 }
 
@@ -60,7 +60,7 @@ echo "extracting subtitles ..."
 ########## extract and shift subs ##########
 
 ffmpeg -i "$in_subbed" -map 0:$sub_id "$subfile" >& /dev/null
-ffmpeg -itsoffset $shift_sec -i "$subfile" "$shifted_subfile" >& /dev/null
+ffmpeg -itsoffset $shift_time -i "$subfile" "$shifted_subfile" >& /dev/null
 
 
 
