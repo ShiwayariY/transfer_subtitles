@@ -3,7 +3,7 @@
 [ $# -eq 5 ] || {
 	echo "Usage: $0 <subbed_file> <raw_file> <out_file> <init_shift_time> <shift_time>"
 	echo -e "\tTransfers subs (+attachments) from <subbed_file> to <raw_file>, while shifting all"
-	echo -e "\ttimestamps from <init_shift_time> (hh:mm:ss) onwards by <shift_time> (timestamp [-]hh:mm:ss[.xxx])"
+	echo -e "\ttimestamps from <init_shift_time> (h:mm:ss) onwards by <shift_time> (timestamp [-]hh:mm:ss[.xxx])"
 	exit
 }
 
